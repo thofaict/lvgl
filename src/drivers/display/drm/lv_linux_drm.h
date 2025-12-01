@@ -55,6 +55,16 @@ typedef size_t (*lv_linux_drm_select_mode_cb_t)(lv_display_t * disp,
 lv_display_t * lv_linux_drm_create(void);
 
 /**
+ * @brief Delete a Linux DRM display
+ *
+ * Deletes the LVGL display that was previously created using lv_linux_drm_create().  First resets and closes the DRM
+ * device, and then deletes the display object.
+ *
+ * @param disp         Pointer to the display object created with lv_linux_drm_create()
+ */
+void lv_linux_drm_delete(lv_display_t * disp);
+
+/**
  * @brief Configure the DRM device file and connector for a display
  *
  * Sets the DRM device file path and connector ID to use for the specified display.

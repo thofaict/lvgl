@@ -158,6 +158,40 @@ lv_display_t * lv_linux_drm_create(void)
     return disp;
 }
 
+void lv_linux_drm_delete(lv_display_t * disp)
+{
+    drm_dev_t * drm_dev;
+
+    drm_dev = (drm_dev_t *) lv_display_get_driver_data(disp);
+    if (drm_dev != NULL) {
+        close(drm_dev->fd);
+
+        if (drm_dev->plane)
+            drmModeFreePlane(drm_dev->plane);
+        if (drm_dev->crtc)
+            drmModeFreeCrtc(drm_dev->crtc);
+        if (drm_dev->conn)
+            drmModeFreeConnector(drm_dev->conn);
+
+        for (uint32_t i = 0; i < drm_dev->count_plane_props; i++)
+            if (drm_dev->plane_props[i])
+                drmModeFreeProperty(drm_dev->plane_props[i]);
+        for (uint32_t i = 0; i < drm_dev->count_crtc_props; i++)
+            if (drm_dev->crtc_props[i])
+                drmModeFreeProperty(drm_dev->crtc_props[i]);
+        for (uint32_t i = 0; i < drm_dev->count_conn_props; i++)
+            if (drm_dev->conn_props[i])
+                drmModeFreeProperty(drm_dev->conn_props[i]);
+
+        if (drm_dev->req)
+            drmModeAtomicFree(drm_dev->req);
+
+        lv_free(drm_dev);
+    }
+
+    lv_display_delete(disp);
+}
+
 /* Called by LVGL when there is something that needs redrawing
  * it sets the active buffer. if GBM buffers are used, it issues a DMA_BUF_SYNC
  * ioctl call to lock the buffer for CPU access, the buffer is unlocked just
@@ -694,6 +728,9 @@ static int drm_find_connector(drm_dev_t * drm_dev, int64_t connector_id)
         LV_LOG_ERROR("drm: CRTC not found");
         goto free_res;
     }
+
+    drmModeFreeConnector(conn);
+    drmModeFreeResources(res);
 
     LV_LOG_TRACE("crtc_idx: %d", drm_dev->crtc_idx);
 
