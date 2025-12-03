@@ -16,6 +16,7 @@
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <xf86drm.h>
@@ -160,11 +161,30 @@ lv_display_t * lv_linux_drm_create(void)
 
 void lv_linux_drm_delete(lv_display_t * disp)
 {
+    printf("Deleting DRM display\n");
     drm_dev_t * drm_dev;
 
     drm_dev = (drm_dev_t *) lv_display_get_driver_data(disp);
     if (drm_dev != NULL) {
-        close(drm_dev->fd);
+        /* Restore saved CRTC */
+        if (drm_dev->saved_crtc) {
+            printf("Restoring saved CRTC\n");
+            drmModeSetCrtc(drm_dev->fd, drm_dev->saved_crtc->crtc_id,
+                           drm_dev->saved_crtc->buffer_id,
+                           drm_dev->saved_crtc->x,
+                           drm_dev->saved_crtc->y,
+                           &drm_dev->conn_id,
+                           1,
+                           &drm_dev->saved_crtc->mode);
+            drmModeFreeCrtc(drm_dev->saved_crtc);
+        }
+
+        drmModeSetCrtc(drm_dev->fd, drm_dev->saved_crtc->crtc_id, 0, 0, 0, NULL, 0, NULL);
+
+        if (drm_dev->blob_id)
+            drmModeDestroyPropertyBlob(drm_dev->fd, drm_dev->blob_id);
+
+        drmDropMaster(drm_dev->fd);
 
         if (drm_dev->plane)
             drmModeFreePlane(drm_dev->plane);
@@ -186,13 +206,14 @@ void lv_linux_drm_delete(lv_display_t * disp)
         if (drm_dev->req)
             drmModeAtomicFree(drm_dev->req);
 
+        close(drm_dev->fd);
         lv_free(drm_dev);
     }
 
     lv_display_delete(disp);
 }
 
-/* Called by LVGL when there is something that needs redrawing
+/* Called by LVGL ghen there is something that needs redrawing
  * it sets the active buffer. if GBM buffers are used, it issues a DMA_BUF_SYNC
  * ioctl call to lock the buffer for CPU access, the buffer is unlocked just
  * before the atomic commit */
@@ -804,6 +825,12 @@ static int drm_setup(drm_dev_t * drm_dev, const char * device_path, int64_t conn
     drm_dev->plane = drmModeGetPlane(drm_dev->fd, drm_dev->plane_id);
     if(!drm_dev->plane) {
         LV_LOG_ERROR("Cannot get plane");
+        goto err;
+    }
+
+    drm_dev->saved_crtc = drmModeGetCrtc(drm_dev->fd, drm_dev->crtc_id);
+    if(!drm_dev->saved_crtc) {
+        LV_LOG_ERROR("Cannot get crtc");
         goto err;
     }
 
